@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<title>محرر الترجمة</title>
+<style>
+  :root{
+    --bg:#0d0f12; --panel:#16191d; --panel2:#1e2227; --line:#2a2f36;
+    --text:#e8e6e1; --muted:#8b9099; --accent:#c95d3a; --ok:#5a9e6f;
+  }
+  *{box-sizing:border-box;}
+  body{ margin:0; background:var(--bg); color:var(--text); font-family:'Segoe UI',Tahoma,sans-serif; display:flex; height:100vh; overflow:hidden; }
+  #sidebar{ width:320px; background:var(--panel); border-left:1px solid var(--line); padding:16px; overflow-y:auto; flex-shrink:0; }
+  #sidebar h1{ font-size:15px; margin:0 0 4px; font-weight:900; }
+  #sidebar .sub{ font-size:11px; color:var(--muted); margin-bottom:16px; }
+  .section{ margin-bottom:16px; padding-bottom:14px; border-bottom:1px solid var(--line); }
+  .section-label{ font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; margin-bottom:8px; display:block; }
+  button.action{ width:100%; padding:9px 10px; background:var(--panel2); border:1px solid var(--line); color:var(--text); border-radius:6px; cursor:pointer; font-family:inherit; font-size:12.5px; margin-bottom:6px; text-align:right; transition:.15s; }
+  button.action:hover{ border-color:var(--accent); }
+  button.primary{ background:var(--accent); border-color:var(--accent); color:#fff; font-weight:700; }
+  button.primary:hover{ filter:brightness(1.1); }
+  button.primary:disabled{ opacity:.5; cursor:not-allowed; }
+  select, input[type=range], input[type=color], input[type=text], input[type=file], textarea{
+    width:100%; background:var(--panel2); border:1px solid var(--line); color:var(--text);
+    border-radius:6px; padding:7px 8px; font-family:inherit; font-size:12px; margin-bottom:8px;
+  }
+  textarea{ min-height:70px; resize:vertical; direction:rtl; font-family:inherit; }
+  label.small{ font-size:11px; color:var(--muted); display:block; margin-bottom:3px; }
+  .row{ display:flex; gap:8px; }
+  .row > *{ flex:1; }
+  .fontRow{ display:flex; gap:6px; align-items:center; margin-bottom:6px; background:var(--panel2); padding:6px; border-radius:6px; }
+  .fontRow span{ font-size:11px; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .fontRow select{ margin:0; width:110px; font-size:11px; padding:4px; }
+  .status{ font-size:11px; color:var(--muted); margin-top:6px; line-height:1.6; }
+  .status.err{ color:#e0857a; }
+  .status.ok{ color:var(--ok); }
+  #noSelection{ font-size:12px; color:var(--muted); line-height:1.6; padding:10px 0; }
+
+  #main{ flex:1; display:flex; flex-direction:column; overflow:hidden; }
+  #tabs{ display:flex; gap:4px; padding:10px 16px; background:var(--panel); border-bottom:1px solid var(--line); overflow-x:auto; flex-shrink:0; }
+  .tab{ padding:6px 14px; border-radius:20px; background:var(--panel2); border:1px solid var(--line); font-size:12px; cursor:pointer; white-space:nowrap; }
+  .tab.active{ background:var(--accent); border-color:var(--accent); color:#fff; }
+
+  #canvasWrap{ flex:1; overflow:auto; display:flex; justify-content:center; padding:30px; }
+  #stage{ position:relative; box-shadow:0 20px 60px rgba(0,0,0,.6); background:#fff; }
+  #stage img{ display:block; max-width:none; }
+
+  .textbox{ position:absolute; cursor:move; display:flex; align-items:center; justify-content:center; text-align:center; line-height:1.15; padding:2px; border:1px dashed transparent; user-select:none; white-space:pre-wrap; word-break:break-word; }
+  .textbox.selected{ border-color:var(--accent); }
+  .resize-handle{ position:absolute; width:12px; height:12px; background:var(--accent); right:-6px; bottom:-6px; cursor:nwse-resize; border-radius:2px; display:none; }
+  .selected .resize-handle{ display:block; }
+  #emptyState{ color:var(--muted); font-size:13px; text-align:center; margin-top:80px; line-height:2; }
+  .progressBarOuter{ width:100%; height:6px; background:var(--panel2); border-radius:4px; overflow:hidden; margin-top:6px; }
+  .progressBarInner{ height:100%; background:var(--accent); width:0%; transition:width .2s; }
+</style>
+</head>
+<body>
+
+<div id="sidebar">
+  <h1>محرر الترجمة</h1>
+  <div class="sub">أداة تشتغل بالكامل بمتصفحك — بدون سيرفر، بدون اشتراك، بدون API</div>
+
+  <div class="section">
+    <span class="section-label">1) صفحات الفصل</span>
+    <label class="small">الصور المنظّفة (بدون كلام) — بترتيب الصفحات</label>
+    <input type="file" id="cleanFiles" accept="image/*" multiple>
+    <label class="small">الصور الأصلية (الراو) — نفس الترتيب، تُستخدم فقط لتحديد أماكن الكلام</label>
+    <input type="file" id="rawFiles" accept="image/*" multiple>
+    <label class="small">الترجمة — كل صفحة أسطرها بترتيب القراءة، وافصل بين الصفحات بسطر فيه ===</label>
+    <textarea id="translationText" placeholder="مرحبا&#10;كيف حالك؟&#10;===&#10;نص الصفحة الثانية..."></textarea>
+    <label class="small">لغة الراو (لتحسين دقة اكتشاف مكان النص)</label>
+    <select id="ocrLang">
+      <option value="kor">كوري</option>
+      <option value="jpn">ياباني</option>
+      <option value="eng">إنجليزي</option>
+      <option value="eng+kor">إنجليزي + كوري</option>
+    </select>
+    <div id="pagesStatus" class="status"></div>
+  </div>
+
+  <div class="section">
+    <span class="section-label">2) الخطوط</span>
+    <input type="file" id="fontFiles" multiple>
+    <div id="fontList"></div>
+    <div class="status">حمّل خطوطك وحدد أي نوع كلام يستخدم كل خط. تقدر بعدين تغير تصنيف أي نص من لوحة التعديل.</div>
+  </div>
+
+  <div class="section">
+    <button class="action primary" id="detectBtn" onclick="detectAll()">اكتشاف أماكن الكلام ولصق الترجمة تلقائيًا</button>
+    <div id="detectStatus" class="status"></div>
+    <div class="progressBarOuter"><div class="progressBarInner" id="progressBar"></div></div>
+  </div>
+
+  <div class="section" id="propsPanel">
+    <span class="section-label">تعديل العنصر المحدد</span>
+    <div id="noSelection">اضغط أي نص بالصفحة للتعديل عليه، أو اسحبه لمكان ثاني. تقدر تضيف نص يدوي جديد لو الاكتشاف فوّت شي.</div>
+    <div id="textProps" style="display:none">
+      <label class="small">النص</label>
+      <textarea id="p_text" oninput="updateSelectedText()"></textarea>
+      <label class="small">التصنيف (يحدد أي خط يُستخدم)</label>
+      <select id="p_cat" onchange="applyCatFont()">
+        <option value="dialogue">حوار</option>
+        <option value="thought">أفكار</option>
+        <option value="sfx">صوت SFX</option>
+        <option value="narration">سرد/لافتة</option>
+      </select>
+      <div class="row">
+        <div><label class="small">الحجم</label><input type="range" id="p_size" min="10" max="80" value="22" oninput="updateSelectedStyle()"></div>
+        <div><label class="small">اللون</label><input type="color" id="p_color" value="#000000" oninput="updateSelectedStyle()"></div>
+      </div>
+      <label class="small">ميلان</label>
+      <input type="range" id="p_skew" min="-30" max="30" value="0" oninput="updateSelectedStyle()">
+      <label class="small">تمويه (بلور)</label>
+      <input type="range" id="p_blur" min="0" max="6" value="0" step="0.5" oninput="updateSelectedStyle()">
+      <button class="action" onclick="deleteSelected()" style="color:#e05a4e;margin-top:4px;">حذف هذا النص</button>
+    </div>
+  </div>
+
+  <div class="section">
+    <button class="action" onclick="addManualBox()">+ إضافة نص يدوي بهذي الصفحة</button>
+  </div>
+
+  <div class="section">
+    <span class="section-label">تصدير</span>
+    <button class="action" onclick="exportPNG()">تحميل PNG لهذي الصفحة</button>
+    <button class="action" onclick="exportAllPDF()">تحميل PDF لكل الفصل</button>
+  </div>
+</div>
+
+<div id="main">
+  <div id="tabs"></div>
+  <div id="canvasWrap">
+    <div id="emptyState">ارفع الصور والترجمة من القائمة الجانبية، وبعدين اضغط "اكتشاف أماكن الكلام".</div>
+    <div id="stage" style="display:none">
+      <img id="pageImg">
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script>
+let pages = [];        // {cleanFile, rawFile, cleanURL, rawURL, lines:[], boxes:[], detected:false}
+let fonts = {};         // category -> font-family name
+let fontCounter = 0;
+let currentPageIndex = -1;
+let selected = null;
+
+const stage = document.getElementById('stage');
+const img = document.getElementById('pageImg');
+
+// ---------- File intake ----------
+document.getElementById('cleanFiles').addEventListener('change', rebuildPages);
+document.getElementById('rawFiles').addEventListener('change', rebuildPages);
+document.getElementById('translationText').addEventListener('input', rebuildPages);
+
+function rebuildPages(){
+  const cleanInput = document.getElementById('cleanFiles').files;
+  const rawInput = document.getElementById('rawFiles').files;
+  const txt = document.getElementById('translationText').value;
+  const blocks = txt.trim().length ? txt.trim().split(/\n\s*===\s*\n?/).map(b=>b.trim()) : [];
+
+  const n = Math.max(cleanInput.length, rawInput.length, blocks.length);
+  const oldPages = pages;
+  pages = [];
+  for(let i=0;i<n;i++){
+    const cleanFile = cleanInput[i] || null;
+    const rawFile = rawInput[i] || null;
+    const lines = (blocks[i]||'').split('\n').map(l=>l.trim()).filter(l=>l.length);
+    const prev = oldPages[i];
+    pages.push({
+      cleanFile, rawFile,
+      cleanURL: cleanFile ? URL.createObjectURL(cleanFile) : null,
+      rawURL: rawFile ? URL.createObjectURL(rawFile) : null,
+      lines,
+      boxes: (prev && prev.detected) ? prev.boxes : [],
+      detected: prev ? prev.detected : false
+    });
+  }
+  renderTabs();
+  const statusEl = document.getElementById('pagesStatus');
+  if(n===0){ statusEl.textContent=''; return; }
+  let warn = '';
+  if(cleanInput.length!==n) warn += ' ناقص صور منظفة؛';
+  if(rawInput.length!==n) warn += ' ناقص صور راو؛';
+  if(blocks.length!==n) warn += ' ناقص نص ترجمة لبعض الصفحات؛';
+  statusEl.className = warn ? 'status err' : 'status ok';
+  statusEl.textContent = warn ? (n+' صفحة مكتشفة، لكن:'+warn) : (n+' صفحة جاهزة ✓');
+}
+
+function renderTabs(){
+  const tabsEl = document.getElementById('tabs');
+  tabsEl.innerHTML='';
+  pages.forEach((p,i)=>{
+    const t = document.createElement('div');
+    t.className = 'tab'+(i===currentPageIndex?' active':'');
+    t.textContent = 'صفحة '+(i+1)+(p.detected?' ✓':'');
+    t.onclick = ()=> showPage(i);
+    tabsEl.appendChild(t);
+  });
+  if(currentPageIndex===-1 && pages.length){ showPage(0); }
+}
+
+function showPage(i){
+  currentPageIndex = i;
+  const p = pages[i];
+  if(!p || !p.cleanURL){ return; }
+  document.getElementById('emptyState').style.display='none';
+  stage.style.display='block';
+  img.src = p.cleanURL;
+  img.onload = ()=>{
+    stage.style.width = img.naturalWidth+'px';
+    stage.style.height = img.naturalHeight+'px';
+    stage.querySelectorAll('.textbox').forEach(e=>e.remove());
+    p.boxes.forEach(b=> renderBox(b));
+  };
+  if(img.complete && img.naturalWidth) img.onload();
+  renderTabs();
+  deselect();
+}
+
+// ---------- Fonts ----------
+document.getElementById('fontFiles').addEventListener('change', async (e)=>{
+  for(const file of e.target.files){
+    const family = 'uploadedFont'+(fontCounter++);
+    const url = URL.createObjectURL(file);
+    try{
+      const face = new FontFace(family, `url(${url})`);
+      await face.load();
+      document.fonts.add(face);
+    }catch(err){ console.error('font load failed for', file.name, err); continue; }
+    addFontRow(family, file.name);
+  }
+});
+
+function addFontRow(family, filename){
+  const row = document.createElement('div');
+  row.className = 'fontRow';
+  const nameSpan = document.createElement('span');
+  nameSpan.textContent = filename;
+  nameSpan.style.fontFamily = family;
+  const sel = document.createElement('select');
+  sel.innerHTML = `
+    <option value="">لا تربط بتصنيف</option>
+    <option value="dialogue">حوار</option>
+    <option value="thought">أفكار</option>
+    <option value="sfx">صوت SFX</option>
+    <option value="narration">سرد/لافتة</option>`;
+  sel.onchange = ()=>{
+    if(sel.value) fonts[sel.value] = family;
+    refreshAllBoxFonts();
+  };
+  row.appendChild(nameSpan);
+  row.appendChild(sel);
+  document.getElementById('fontList').appendChild(row);
+}
+
+function fontForCategory(cat){ return fonts[cat] || 'inherit'; }
+
+function refreshAllBoxFonts(){
+  stage.querySelectorAll('.textbox').forEach(el=>{
+    const b = el._boxData;
+    if(b) el.style.fontFamily = fontForCategory(b.category);
+  });
+}
+
+// ---------- Drag / resize ----------
+function makeDraggable(el){
+  let sx, sy, ox, oy, dragging=false;
+  el.addEventListener('mousedown', (e)=>{
+    if(e.target.classList.contains('resize-handle')) return;
+    select(el); dragging = true; sx=e.clientX; sy=e.clientY; ox=el.offsetLeft; oy=el.offsetTop;
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', (e)=>{
+    if(!dragging) return;
+    el.style.left = (ox + e.clientX - sx)+'px';
+    el.style.top = (oy + e.clientY - sy)+'px';
+    const b = el._boxData; if(b){ b.x = el.offsetLeft; b.y = el.offsetTop; }
+  });
+  document.addEventListener('mouseup', ()=> dragging=false );
+}
+function makeResizable(el, handle){
+  let sx, sy, ow, oh, resizing=false;
+  handle.addEventListener('mousedown', (e)=>{
+    resizing = true; sx=e.clientX; sy=e.clientY; ow=el.offsetWidth; oh=el.offsetHeight;
+    e.stopPropagation(); e.preventDefault();
+  });
+  document.addEventListener('mousemove', (e)=>{
+    if(!resizing) return;
+    const w = Math.max(30, ow + e.clientX - sx), h = Math.max(20, oh + e.clientY - sy);
+    el.style.width = w+'px'; el.style.height = h+'px';
+    const b = el._boxData; if(b){ b.w = w; b.h = h; }
+  });
+  document.addEventListener('mouseup', ()=> resizing=false );
+}
+
+// ---------- Box render / select ----------
+function renderBox(b){
+  const el = document.createElement('div');
+  el.className='textbox';
+  el.style.left=b.x+'px'; el.style.top=b.y+'px';
+  el.style.width=b.w+'px'; el.style.height=b.h+'px';
+  el.style.fontFamily = fontForCategory(b.category);
+  el.style.fontSize = b.size+'px';
+  el.style.color = b.color;
+  el.style.fontWeight = b.category==='sfx' ? '900':'700';
+  el.style.transform = `skewX(${b.skew||0}deg)`;
+  el.style.filter = (b.blur||0) > 0 ? `blur(${b.blur}px)` : 'none';
+  el.innerText = b.text;
+  const handle = document.createElement('div');
+  handle.className='resize-handle';
+  el.appendChild(handle);
+  el._boxData = b;
+  stage.appendChild(el);
+  makeDraggable(el);
+  makeResizable(el, handle);
+  return el;
+}
+
+function select(el){
+  stage.querySelectorAll('.textbox').forEach(e=>e.classList.remove('selected'));
+  el.classList.add('selected');
+  selected = el;
+  const b = el._boxData;
+  document.getElementById('noSelection').style.display='none';
+  document.getElementById('textProps').style.display='block';
+  document.getElementById('p_text').value = b.text;
+  document.getElementById('p_cat').value = b.category;
+  document.getElementById('p_size').value = b.size;
+  document.getElementById('p_color').value = b.color && b.color.startsWith('#') ? b.color : '#000000';
+  document.getElementById('p_skew').value = b.skew||0;
+  document.getElementById('p_blur').value = b.blur||0;
+}
+function deselect(){
+  selected=null;
+  document.getElementById('noSelection').style.display='block';
+  document.getElementById('textProps').style.display='none';
+}
+document.getElementById('canvasWrap').addEventListener('mousedown', (e)=>{
+  if(e.target.id==='canvasWrap' || e.target.id==='stage' || e.target.id==='pageImg'){
+    stage.querySelectorAll('.textbox').forEach(el=>el.classList.remove('selected'));
+    deselect();
+  }
+});
+
+function updateSelectedText(){
+  if(!selected) return;
+  selected._boxData.text = document.getElementById('p_text').value;
+  const handle = selected.querySelector('.resize-handle');
+  selected.innerText = document.getElementById('p_text').value;
+  selected.appendChild(handle);
+}
+function applyCatFont(){
+  if(!selected) return;
+  selected._boxData.category = document.getElementById('p_cat').value;
+  selected.style.fontFamily = fontForCategory(selected._boxData.category);
+  selected.style.fontWeight = selected._boxData.category==='sfx' ? '900':'700';
+}
+function updateSelectedStyle(){
+  if(!selected) return;
+  const b = selected._boxData;
+  b.size = +document.getElementById('p_size').value;
+  b.color = document.getElementById('p_color').value;
+  b.skew = +document.getElementById('p_skew').value;
+  b.blur = +document.getElementById('p_blur').value;
+  selected.style.fontSize = b.size+'px';
+  selected.style.color = b.color;
+  selected.style.transform = `skewX(${b.skew}deg)`;
+  selected.style.filter = b.blur>0 ? `blur(${b.blur}px)` : 'none';
+}
+function deleteSelected(){
+  if(!selected) return;
+  const b = selected._boxData;
+  const p = pages[currentPageIndex];
+  p.boxes = p.boxes.filter(x=>x!==b);
+  selected.remove();
+  deselect();
+}
+function addManualBox(){
+  if(currentPageIndex===-1) return;
+  const p = pages[currentPageIndex];
+  const b = { text:'نص جديد', x:60, y:60, w:220, h:90, category:'dialogue', size:22, color:'#000000', skew:0, blur:0 };
+  p.boxes.push(b);
+  const el = renderBox(b);
+  select(el);
+}
+
+// ---------- Local color sampling from raw image (no AI, just pixel analysis) ----------
+function sampleColorNear(rawImgEl, xPct, yPct, wPct, hPct){
+  const c = document.createElement('canvas');
+  c.width = rawImgEl.naturalWidth; c.height = rawImgEl.naturalHeight;
+  const ctx = c.getContext('2d');
+  ctx.drawImage(rawImgEl, 0, 0);
+  const x0 = Math.floor(xPct/100*c.width), y0 = Math.floor(yPct/100*c.height);
+  const w = Math.max(4, Math.floor(wPct/100*c.width)), h = Math.max(4, Math.floor(hPct/100*c.height));
+  let best=null, bestScore=-1;
+  const step = Math.max(1, Math.floor(Math.min(w,h)/12));
+  for(let x=x0; x<x0+w; x+=step){
+    for(let y=y0; y<y0+h; y+=step){
+      if(x<0||y<0||x>=c.width||y>=c.height) continue;
+      const d = ctx.getImageData(x,y,1,1).data;
+      const r=d[0],g=d[1],bl=d[2];
+      const maxc=Math.max(r,g,bl), minc=Math.min(r,g,bl);
+      const sat = maxc-minc;
+      const dark = 255-((r+g+bl)/3);
+      const score = sat*1.2 + dark*0.6;
+      if(score>bestScore){ bestScore=score; best=[r,g,bl]; }
+    }
+  }
+  if(!best) return '#000000';
+  return '#'+best.map(v=>v.toString(16).padStart(2,'0')).join('');
+}
+
+function loadImgEl(src){
+  return new Promise((resolve,reject)=>{
+    const im = new Image();
+    im.onload = ()=>resolve(im);
+    im.onerror = reject;
+    im.src = src;
+  });
+}
+
+// ---------- OCR-based text-block detection (fully local, free) ----------
+function groupLinesIntoBlocks(lines){
+  // lines: [{bbox:{x0,y0,x1,y1}}], sorted top-to-bottom
+  const sorted = lines.slice().sort((a,b)=> a.bbox.y0 - b.bbox.y0);
+  const blocks = [];
+  for(const line of sorted){
+    const h = line.bbox.y1 - line.bbox.y0;
+    let merged = false;
+    for(const block of blocks){
+      const vGap = line.bbox.y0 - block.y1;
+      const hOverlap = !(line.bbox.x1 < block.x0 - h*2 || line.bbox.x0 > block.x1 + h*2);
+      if(vGap < h*0.9 && vGap > -h*2 && hOverlap){
+        block.x0 = Math.min(block.x0, line.bbox.x0);
+        block.y0 = Math.min(block.y0, line.bbox.y0);
+        block.x1 = Math.max(block.x1, line.bbox.x1);
+        block.y1 = Math.max(block.y1, line.bbox.y1);
+        merged = true;
+        break;
+      }
+    }
+    if(!merged){
+      blocks.push({x0:line.bbox.x0, y0:line.bbox.y0, x1:line.bbox.x1, y1:line.bbox.y1});
+    }
+  }
+  // reading order: top to bottom, then left to right within similar rows
+  blocks.sort((a,b)=> a.y0 - b.y0);
+  return blocks;
+}
+
+async function detectPage(p, lang, onProgress){
+  const rawSrc = p.rawURL || p.cleanURL;
+  const rawImgEl = await loadImgEl(rawSrc);
+  const result = await Tesseract.recognize(rawSrc, lang, {
+    logger: m => { if(m.status==='recognizing text' && onProgress) onProgress(m.progress); }
+  });
+  const allLines = (result.data.lines || []).filter(l => l.text && l.text.trim().length);
+  const blocks = groupLinesIntoBlocks(allLines);
+
+  const cleanImgEl = await loadImgEl(p.cleanURL || p.rawURL);
+  const scaleX = cleanImgEl.naturalWidth / rawImgEl.naturalWidth;
+  const scaleY = cleanImgEl.naturalHeight / rawImgEl.naturalHeight;
+
+  const boxes = [];
+  const count = Math.max(blocks.length, p.lines.length);
+  for(let i=0;i<count;i++){
+    const blk = blocks[i];
+    const text = p.lines[i] !== undefined ? p.lines[i] : '';
+    if(!text) continue;
+    if(blk){
+      const xPct = blk.x0/rawImgEl.naturalWidth*100, yPct = blk.y0/rawImgEl.naturalHeight*100;
+      const wPct = (blk.x1-blk.x0)/rawImgEl.naturalWidth*100, hPct = (blk.y1-blk.y0)/rawImgEl.naturalHeight*100;
+      const color = sampleColorNear(rawImgEl, xPct, yPct, wPct, hPct);
+      boxes.push({
+        text,
+        x: blk.x0*scaleX, y: blk.y0*scaleY,
+        w: Math.max(60,(blk.x1-blk.x0)*scaleX), h: Math.max(30,(blk.y1-blk.y0)*scaleY),
+        category:'dialogue', size: Math.max(14, Math.min(48, (blk.y1-blk.y0)*scaleY*0.55)),
+        color, skew:0, blur:0
+      });
+    } else {
+      // leftover translation line with no matching detected block — stack at bottom so it's visible, not lost
+      boxes.push({
+        text, x: 20, y: 20 + (i-blocks.length)*70, w: 240, h: 60,
+        category:'dialogue', size:20, color:'#ff2d2d', skew:0, blur:0
+      });
+    }
+  }
+  p.boxes = boxes;
+  p.detected = true;
+}
+
+async function detectAll(){
+  if(!pages.length) return;
+  const btn = document.getElementById('detectBtn');
+  const statusEl = document.getElementById('detectStatus');
+  const bar = document.getElementById('progressBar');
+  const lang = document.getElementById('ocrLang').value;
+
+  // Diagnostic check #1: did the OCR library even load from the CDN?
+  if(typeof Tesseract === 'undefined'){
+    statusEl.className='status err';
+    statusEl.textContent = 'فشل تحميل مكتبة الاكتشاف (Tesseract) من الإنترنت. تأكدي إن عندك اتصال إنترنت شغال وقت فتح الصفحة، وجربي تحدّثين الصفحة (Refresh) وتحاولين من جديد. لو استمرت المشكلة، انسخي هذا النص وابعثيه لي: Tesseract undefined.';
+    return;
+  }
+
+  btn.disabled = true;
+  let anySuccess = false;
+  for(let i=0;i<pages.length;i++){
+    statusEl.className='status';
+    statusEl.textContent = `جاري تحليل صفحة ${i+1} من ${pages.length}...`;
+    try{
+      await detectPage(pages[i], lang, (prog)=>{ bar.style.width = Math.round(prog*100)+'%'; });
+      renderTabs();
+      if(i===currentPageIndex || currentPageIndex===-1) showPage(i);
+      anySuccess = true;
+    }catch(err){
+      console.error(err);
+      statusEl.className='status err';
+      const detail = (err && err.message) ? err.message : String(err);
+      statusEl.textContent = `صفحة ${i+1}: تعذر الاكتشاف. الخطأ بالضبط: "${detail}" — انسخي هذا النص وابعثيه لي. بالمقابل ممكن تضيفين النصوص يدويًا لهذي الصفحة.`;
+    }
+  }
+  bar.style.width='100%';
+  if(anySuccess){
+    statusEl.className='status ok';
+    statusEl.textContent = 'خلص الاكتشاف. النصوص الحمراء = ترجمة ما لقى لها مكان مطابق، حركها يدويًا. راجع الباقي وعدل الخط/اللون.';
+  }
+  btn.disabled = false;
+  showPage(currentPageIndex===-1?0:currentPageIndex);
+}
+
+// ---------- Export ----------
+function exportPNG(){
+  document.querySelectorAll('.resize-handle').forEach(h=>h.style.display='none');
+  stage.querySelectorAll('.textbox').forEach(e=>e.classList.remove('selected'));
+  html2canvas(stage, {useCORS:true}).then(canvas=>{
+    const link = document.createElement('a');
+    link.download = `page-${currentPageIndex+1}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  });
+}
+async function exportAllPDF(){
+  const { jsPDF } = window.jspdf;
+  let pdf = null;
+  const savedIndex = currentPageIndex;
+  for(let i=0;i<pages.length;i++){
+    showPage(i);
+    await new Promise(r=>setTimeout(r,150));
+    document.querySelectorAll('.resize-handle').forEach(h=>h.style.display='none');
+    stage.querySelectorAll('.textbox').forEach(e=>e.classList.remove('selected'));
+    const canvas = await html2canvas(stage, {useCORS:true});
+    const imgData = canvas.toDataURL('image/png');
+    if(!pdf){
+      pdf = new jsPDF({ orientation: canvas.height>canvas.width?'p':'l', unit:'px', format:[canvas.width, canvas.height] });
+      pdf.addImage(imgData,'PNG',0,0,canvas.width,canvas.height);
+    } else {
+      pdf.addPage([canvas.width, canvas.height], canvas.height>canvas.width?'p':'l');
+      pdf.addImage(imgData,'PNG',0,0,canvas.width,canvas.height);
+    }
+  }
+  if(pdf) pdf.save('chapter-translated.pdf');
+  showPage(savedIndex);
+}
+</script>
+</body>
+</html>
